@@ -425,9 +425,8 @@ init([NkPort]) ->
 
 
 %% @private
-ranch_init(NkPort, Ref) ->
+ranch_init(NkPort, _Ref) ->
     ok = proc_lib:init_ack({ok, self()}),
-    ok = ranch:accept_ack(Ref),
     {ok, State} = init([NkPort]),
     gen_server:enter_loop(?MODULE, [], State).
 
