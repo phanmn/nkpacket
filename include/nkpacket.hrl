@@ -31,27 +31,6 @@
 -define(CONN_CLIENT_OPTS, [monitor|?CONN_LISTEN_OPTS]).
 
 
--define(
-    DO_LOG(Level, Domain, Text, Opts),
-        lager:Level([{domain, Domain}], "~p "++Text, [Domain|Opts])).
-
--define(debug(Domain, Text, List), 
-    ?DO_LOG(debug, Domain, Text, List)).
-
--define(info(Domain, Text, List), 
-    ?DO_LOG(info, Domain, Text, List)).
-
--define(notice(Domain, Text, List), 
-    ?DO_LOG(notice, Domain, Text, List)).
-
--define(warning(Domain, Text, List), 
-    ?DO_LOG(warning, Domain, Text, List)).
-
--define(error(Domain, Text, List), 
-    ?DO_LOG(error, Domain, Text, List)).
-
-
-
 %%-define(PACKET_TYPES,
 %%    packet_idle_timeout => integer()
 %%    packet_connect_timeout => integer(),

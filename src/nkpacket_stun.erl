@@ -220,14 +220,14 @@ get_stun_servers([], _Socket, _Local, List) ->
         [ExtIp] ->
             ok;
         [ExtIp|_] = All ->
-            lager:error("STUN multiple external IPs!!: ~p", [All]);
+            ?E("STUN multiple external IPs!!: ~p", [All]);
         [] ->
             ExtIp = {127,0,0,1},
-            lager:notice("STUN could not find external IP!!")
+            ?N("STUN could not find external IP!!")
     end,
     case lists:keymember(port_changed, 2, List) of
         true ->
-            lager:warning("Current NAT is changing ports!");
+            ?W("Current NAT is changing ports!");
         false ->
             ok
     end,
@@ -253,10 +253,10 @@ get_stun_servers([Uri|Rest], Socket, Local, Acc) ->
     end,
     case Ips of
         [] ->
-            lager:notice("Skipping STUN ~s", [Host]),
+            ?N("Skipping STUN ~s", [Host]),
             get_stun_servers(Rest, Socket, Local, Acc);
         _ ->
-            lager:info("Checking STUN ~s", [Host]),
+            ?I("Checking STUN ~s", [Host]),
             Acc2 = check_stun_server(Ips, Port, Socket, Local, Acc),
             get_stun_servers(Rest, Socket, Local, Acc2)
     end.
@@ -278,7 +278,7 @@ check_stun_server([Ip|Rest], Port, Socket, LocalPort, Acc) ->
             case decode(Raw) of
                 {response, binding, Id, Data} ->
                     Time = (nklib_util:l_timestamp() - Start) div 1000,
-                    % lager:info("STUN server ~p: ~p msecs", [Ip, Time]),
+                    % ?I("STUN server ~p: ~p msecs", [Ip, Time]),
                     case proplists:get_value(mapped_address, Data) of
                         {RemoteIp, LocalPort} ->
                             [{RemoteIp, ok, Ip, Port2, Time}|Acc];
@@ -302,7 +302,7 @@ send_and_recv(Socket, Ip, Port, Request) ->
         gen_udp:recv(Socket, 0, 5000)
     catch
         E:R ->
-            lager:warning("gen-udp:send errored with ~p, reason ~p", [E, R]),
+            ?W("gen-udp:send errored with ~p, reason ~p", [E, R]),
             {E, R}
     end.
 

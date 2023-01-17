@@ -24,6 +24,7 @@
 -compile([export_all]).
 -compile(nowarn_export_all).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("nklib/include/nklib.hrl").
 -include("nkpacket.hrl").
 
 udp_test_() ->
@@ -53,7 +54,7 @@ basic() ->
 	{ok, {_, udp, {0,0,0,0}, Port1}} = nkpacket:get_local(UdpP1),
 	case Port1 of
 		1234 -> ok;
-		_ -> lager:warning("Could not open port 1234")
+		_ -> ?W("Could not open port 1234")
 	end,
 	[{Listen1, _, _}] = nkpacket:get_all(),
 	[Listen1] = nkpacket:get_class_ids(none),
@@ -79,7 +80,7 @@ basic() ->
 		#nkport{transp=udp, local_port=Port2, pid=LisA}
 	] = test_util:listeners(dom2),
 
-	lager:warning("Some processes will be killed now..."),
+	?W("Some processes will be killed now..."),
 	% Should also work with kill
 	% exit(ConnA, kill),
 	exit(ConnA, forced_stop),

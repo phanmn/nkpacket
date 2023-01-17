@@ -183,7 +183,7 @@ static() ->
 	{ok, 404, _} = get(Gun, "/1/2/index.htm", []),
 	{ok, 200, H3, <<"file1.txt">>} = get(Gun, "/dir1/file1.txt", []),
 	{ok, 200, H3, <<"file1.txt">>} = get(Gun, "/dir1/././file1.txt", []),
-	lager:warning("Next warning about unathorized access is expected"),
+	?W("Next warning about unathorized access is expected"),
 	{ok, 400, _} = get(Gun, "/dir1/../../file1.txt", []),
 	{ok, 200, H3, <<"file1.txt">>} = get(Gun, "/dir1/../dir1/file1.txt", []),
 	[

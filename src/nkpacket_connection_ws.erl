@@ -27,13 +27,9 @@
 
 -define(DEBUG(Txt, Args),
     case erlang:get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args);
+        true -> ?D(Txt, Args);
         _ -> ok
     end).
-
--define(LLOG(Type, Txt, Args), 
-        lager:Type("NkPACKET Conn "++Txt, Args)).
-
 
 -record(payload, {
     type = undefined :: cow_ws:frame_type(),

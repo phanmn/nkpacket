@@ -27,6 +27,7 @@
 
 -include("nkpacket.hrl").
 -include_lib("public_key/include/OTP-PUB-KEY.hrl").
+-include_lib("nklib/include/nklib.hrl").
 
 %% ===================================================================
 %% Public
@@ -52,7 +53,7 @@ make_outbound_opts(#{tls_verify:=host, host:=Host}) ->
     maps:to_list(Opts);
 
 make_outbound_opts(#{tls_verify:=host}=Opts) ->
-    lager:warning("NkPACKET: TLS host is not available"),
+    ?W("NkPACKET: TLS host is not available"),
     make_outbound_opts(maps:remove(tls_verify, Opts));
 
 make_outbound_opts(Opts) ->

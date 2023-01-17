@@ -81,15 +81,6 @@ connect(NkPort) ->
 
 %% To get debug info, start with debug=>true
 
--define(DEBUG(Txt, Args),
-    case get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args);
-        _ -> ok
-    end).
-
--define(LLOG(Type, Txt, Args), lager:Type("NkPACKET HTTP "++Txt, Args)).
-
-
 %% ===================================================================
 %% gen_server
 %% ===================================================================
@@ -183,7 +174,7 @@ init([NkPort]) ->
         {ok, State}
     catch
         throw:TError -> 
-            ?LLOG(error, "could not start ~p transport on ~p:~p (~p)", 
+            ?E("could not start ~p transport on ~p:~p (~p)",
                    [Transp, Ip, Port, TError]),
         {stop, TError}
     end.
@@ -215,15 +206,15 @@ handle_call({nkpacket_start, Ip, Port, Pid}, _From, State) ->
             case nkpacket_connection:start(NkPort1) of
                 {ok, ConnPid} ->
                     NkPort2 = NkPort1#nkport{pid=ConnPid, opts=Opts},
-                    ?DEBUG("listener accepted connection: ~p", [NkPort2]),
+                    ?D("listener accepted connection: ~p", [NkPort2]),
                     {reply, {ok, NkPort2}, State};
                 {error, Error} ->
-                    ?DEBUG("listener did not accepted connection:"
+                    ?D("listener did not accepted connection:"
                             " ~p", [Error]),
                     {reply, next, State}
             end;
         false ->
-            ?LLOG(warning, "protocol ~p is missing", [Protocol]),
+            ?W("protocol ~p is missing", [Protocol]),
             {reply, next, State}
     end;
 
@@ -261,7 +252,7 @@ handle_info({'DOWN', MRef, process, _Pid, _Reason}, #state{monitor_ref=MRef}=Sta
     {stop, normal, State};
 
 handle_info({'DOWN', _MRef, process, Pid, Reason}, #state{shared=Pid}=State) ->
-    ?DEBUG("received SHARED stop", []),
+    ?D("received SHARED stop", []),
     {stop, Reason, State};
 
 handle_info(Msg, #state{nkport=NkPort}=State) ->
@@ -310,7 +301,7 @@ cowboy_init(Pid, Req, PathList, _FilterMeta, Env) ->
                     {redirect, Path} ->
                         Uri = list_to_binary(cowboy_req:uri(Req)),
                         Url = nkpacket_util:join_path(Uri, Path),
-                        ?DEBUG("HTTP redirected to ~s", [Url]),
+                        ?D("HTTP redirected to ~s", [Url]),
                         Req2 = cowboy_req:set_resp_header(<<"location">>, Url, Req),
                         {ok, nkpacket_cowboy:reply(301, #{}, <<>>, Req2), Env};
                     {cowboy_static, Opts} ->
@@ -343,7 +334,7 @@ cowboy_init(Pid, Req, PathList, _FilterMeta, Env) ->
     end,
     case nklib_util:do_try(Fun) of
         {exception, {Class, {Error, Trace}}} ->
-            lager:warning("NkPACKET HTTP EXPCEPTION ~p", [{Class, {Error, Trace}}]),
+            ?W("NkPACKET HTTP EXPCEPTION ~p", [{Class, {Error, Trace}}]),
             erlang:raise(Class, Error, Trace);
         Other ->
             Other
@@ -366,7 +357,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=http}
         Timeout0 ->
             Timeout0
     end,
-    ?DEBUG("connecting to http:~p:~p (~p)", [Ip, Port, SocketOpts]),
+    ?D("connecting to http:~p:~p (~p)", [Ip, Port, SocketOpts]),
     case gen_tcp:connect(Ip, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, inet, Socket};
@@ -388,7 +379,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=https
         _ ->
             Ip
     end,
-    ?DEBUG("connecting to https:~p:~p (~p)", [Host, Port, SocketOpts]),
+    ?D("connecting to https:~p:~p (~p)", [Host, Port, SocketOpts]),
     case ssl:connect(Host, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, ssl, Socket};

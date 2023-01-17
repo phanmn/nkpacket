@@ -39,18 +39,6 @@
 %% To get debug info, the current process must have 'nkpacket_debug=true'
 
 
--define(DEBUG(Txt, Args, NkPort),
-    case erlang:get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args, NkPort);
-        _ -> ok
-    end).
-
-
--define(LLOG(Type, Txt, Args, NkPort), 
-        lager:Type("NkPACKET Conn ~p (~p) "++Txt, 
-                   [NkPort#nkport.protocol, NkPort#nkport.transp|Args])).
-
-
 %% ===================================================================
 %% Public
 %% ===================================================================
@@ -131,7 +119,7 @@ send(#nkport{protocol=Protocol, pid=Pid}=NkPort, Msg) when node(Pid)==node() ->
                     % nkpacket_debug tag will be present
                     % Otherwise, we need to set it or add check to #nkport.meta
                     % (debug should be present there)
-                    ?DEBUG("raw DIRECT socket send: ~p", [OutMsg], NkPort),
+                    ?D("raw DIRECT socket send: ~p ~p", [OutMsg, NkPort]),
                     case nkpacket_connection_lib:raw_send(NkPort, OutMsg) of
                         ok when Updated ->
                             reset_timeout(Pid),
@@ -145,7 +133,7 @@ send(#nkport{protocol=Protocol, pid=Pid}=NkPort, Msg) when node(Pid)==node() ->
                 continue when is_pid(Pid) ->
                     send(Pid, Msg);
                 {error, Error} ->
-                    lager:notice("NkPACKET Conn error unparsing msg: ~p", [Error]),
+                    ?N("NkPACKET Conn error unparsing msg: ~p", [Error]),
                     {error, encode_error}
             end;
         false when is_pid(Pid) ->
@@ -409,7 +397,7 @@ init([NkPort]) ->
         protocol = Protocol
     },
     %% 'user' key is only sent to conn_init, then it is removed
-    ?DEBUG("started to/from ~p:~p (~p, ~p)", [Ip, Port, Class, self()], NkPort),
+    ?D("started to/from ~p:~p (~p, ~p) ~p", [Ip, Port, Class, self(), NkPort]),
     case nkpacket_util:init_protocol(Protocol, conn_init, NkPort2) of
         {ok, ProtoState} ->
             State1 = State#state{proto_state=ProtoState},
@@ -533,12 +521,12 @@ handle_cast({nkpacket_stop, Reason}, State) ->
     {stop, Reason, State};
 
 handle_cast({nkpacket_bridged, Bridge}, #state{nkport=NkPort}=State) ->
-    ?DEBUG("bridged: ~p, ~p", [?PR(Bridge), ?PR(NkPort)], NkPort),
+    ?D("bridged: ~p, ~p", [Bridge, NkPort]),
     {noreply, start_bridge(Bridge, down, State)};
 
 handle_cast({nkpacket_stop_bridge, Pid}, #state{bridge=#nkport{pid=Pid}}=State) ->
     #state{nkport=NkPort} = State,
-    ?DEBUG("unBridged: ~p, ~p", [Pid, ?PR(NkPort)], NkPort),
+    ?D("unBridged: ~p, ~p", [Pid, NkPort]),
     #state{bridge_monitor=Mon} = State, 
     case is_reference(Mon) of
         true -> erlang:demonitor(Mon);
@@ -547,7 +535,7 @@ handle_cast({nkpacket_stop_bridge, Pid}, #state{bridge=#nkport{pid=Pid}}=State) 
     {noreply, State#state{bridge_monitor=undefined, bridge=undefined}};
 
 handle_cast({nkpacket_stop_bridge, Pid}, #state{nkport=NkPort}=State) ->
-    ?LLOG(notice, "received unbridge for unknown bridge ~p", [Pid], NkPort),
+    ?N("received unbridge for unknown bridge ~p ~p", [Pid, NkPort]),
     {noreply, State};
 
 handle_cast({update_monitor, Pid}, #state{user_monitor=OldMon}=State) ->
@@ -575,7 +563,7 @@ handle_info({ssl, Socket, Data}, #state{socket=Socket}=State) ->
     parse(Data, restart_timer(State));
 
 handle_info({tcp_closed, _Socket}, #state{nkport=NkPort}=State) ->
-    ?DEBUG("tcp closed", [], NkPort),
+    ?D("tcp closed ~p", [NkPort]),
     case catch call_protocol(conn_parse, [close, NkPort], State) of
         undefined -> 
             {stop, normal, State};
@@ -586,26 +574,26 @@ handle_info({tcp_closed, _Socket}, #state{nkport=NkPort}=State) ->
     end;
     
 handle_info({tcp_error, _Socket}, #state{nkport=NkPort}=State) ->
-    ?DEBUG("tcp error", [], NkPort),
+    ?D("tcp error ~p", [NkPort]),
     {stop, normal, State};
 
 handle_info({ssl_closed, _Socket}, #state{nkport=NkPort}=State) ->
-    ?DEBUG("ssl close", [], NkPort),
+    ?D("ssl close ~p", [NkPort]),
     handle_info({tcp_closed, none}, State);
 
 handle_info({ssl_error, _Socket}, #state{nkport=NkPort}=State) ->
-    ?DEBUG("ssl error", [], NkPort),
+    ?D("ssl error ~p", [NkPort]),
     {stop, normal, State};
 
 handle_info({timeout, _, idle_timer}, #state{nkport=NkPort}=State) ->
     case call_protocol(conn_timeout, [NkPort], State) of
         undefined ->
-            ?DEBUG("timeout", [], NkPort),
+            ?D("timeout ~p", [NkPort]),
             {stop, normal, State};
         {ok, State1} ->
             {noreply, restart_timer(State1)};
         {stop, Reason, State1} ->
-            ?DEBUG("timeout: ~p", [Reason], NkPort),
+            ?D("timeout: ~p ~p", [Reason, NkPort]),
             {stop, Reason, State1}
     end;
 
@@ -617,17 +605,17 @@ handle_info({'DOWN', MRef, process, _Pid, Reason}, #state{bridge_monitor=MRef}=S
 
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, 
         #state{listen_monitor=MRef, nkport=NkPort}=State) ->
-    ?DEBUG("stop (listener stop)", [], NkPort),
+    ?D("stop (listener stop) ~p", [NkPort]),
     {stop, normal, State};
 
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, 
         #state{srv_monitor=MRef, nkport=NkPort}=State) ->
-    ?DEBUG("stop (server stop)", [], NkPort),
+    ?D("stop (server stop) ~p", [NkPort]),
     {stop, normal, State};
 
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, 
         #state{user_monitor=MRef, nkport=NkPort}=State) ->
-    ?DEBUG("stop (monitor stop)", [], NkPort),
+    ?D("stop (monitor stop) ~p", [NkPort]),
     {stop, normal, State};
 
 handle_info(Msg, #state{nkport=NkPort}=State) ->
@@ -652,7 +640,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(Reason, #state{nkport = NkPort} = State) ->
     catch call_protocol(conn_stop, [Reason, NkPort], State),
-    ?DEBUG("process stopped (~p, ~p)", [Reason, self()], NkPort),
+    ?D("process stopped (~p, ~p)", [Reason, self()]),
     % Sometimes ssl sockets are slow to close here
     spawn(fun() -> nkpacket_connection_lib:raw_stop(NkPort) end),
     ok.
@@ -728,23 +716,23 @@ do_parse(Data, #state{bridge=#nkport{}=To}=State) ->
         undefined ->
             case nkpacket_connection_lib:raw_send(To, Data) of
                 ok ->
-                    ?DEBUG("packet ~p bridged from ~p:~p to ~p:~p", 
-                          [Data, FromIp, FromPort, ToIp, ToPort], From),
+                    ?D("packet ~p bridged from ~p:~p to ~p:~p",
+                          [Data, FromIp, FromPort, ToIp, ToPort]),
                     {ok, State};
                 {error, Error} ->
-                    ?LLOG(info, "packet ~p could not be bridged from ~p:~p to ~p:~p", 
-                           [Data, FromIp, FromPort, ToIp, ToPort], From),
+                    ?I("packet ~p could not be bridged from ~p:~p to ~p:~p",
+                           [Data, FromIp, FromPort, ToIp, ToPort]),
                     {stop, Error, State}
             end;
         {ok, Data1, State1} ->
             case nkpacket_connection_lib:raw_send(To, Data1) of
                 ok ->
-                    ?DEBUG("packet ~p bridged from ~p:~p to ~p:~p", 
-                          [Data1, FromIp, FromPort, ToIp, ToPort], From),
+                    ?D("packet ~p bridged from ~p:~p to ~p:~p",
+                          [Data1, FromIp, FromPort, ToIp, ToPort]),
                     {ok, State1};
                 {error, Error} ->
-                    ?LLOG(notice, "packet ~p could not be bridged from ~p:~p to ~p:~p", 
-                          [Data1, FromIp, FromPort, ToIp, ToPort], From),
+                    ?N("packet ~p could not be bridged from ~p:~p to ~p:~p",
+                          [Data1, FromIp, FromPort, ToIp, ToPort]),
                     {stop, Error, State1}
             end;
         {skip, State1} ->
@@ -754,11 +742,11 @@ do_parse(Data, #state{bridge=#nkport{}=To}=State) ->
     end;
 
 do_parse(Data, #state{nkport=#nkport{protocol=Protocol}=NkPort}=State) ->
-    ?DEBUG("recv: ~p", [Data], NkPort),
+    ?D("recv: ~p", [Data]),
     case call_protocol(conn_parse, [Data, NkPort], State) of
         undefined ->
-            ?LLOG(warning, "received data for undefined protocol ~p", 
-                   [Protocol], NkPort),
+            ?W("received data for undefined protocol ~p",
+                   [Protocol]),
             {ok, State};
         {ok, State1} ->
             {ok, State1};
@@ -780,7 +768,7 @@ do_parse(Data, #state{nkport=#nkport{protocol=Protocol}=NkPort}=State) ->
         {stop, normal, State1} ->
             {stop, normal, State1};
         {stop, Reason, State1} ->
-            ?DEBUG("stop response from conn_parse: ~p", [Reason], NkPort),
+            ?D("stop response from conn_parse: ~p", [Reason]),
             {stop, normal, State1}
     end.
 
@@ -790,7 +778,7 @@ do_send(Msg, #state{nkport=NkPort}=State) ->
     {Updated, Msg2} = update_msg(Msg, NkPort),
     case encode(Msg2, State) of
         {ok, OutMsg, State1} ->
-            ?DEBUG("raw send (process): ~p", [OutMsg], NkPort),
+            ?D("raw send (process): ~p", [OutMsg]),
             case nkpacket_connection_lib:raw_send(NkPort, OutMsg) of
                 ok when Updated ->
                     {ok, {ok, Msg2}, restart_timer(State1)};
@@ -823,8 +811,8 @@ start_bridge(Bridge, Type, State) ->
     end,
     case OldBridge of
         undefined ->
-            ?DEBUG("connection ~p started bridge ~p from ~p:~p to ~p:~p",
-                  [self(), Type, FromIp, FromPort, ToIp, ToPort], NkPort),
+            ?D("connection ~p started bridge ~p from ~p:~p to ~p:~p",
+                  [self(), Type, FromIp, FromPort, ToIp, ToPort]),
             Mon = erlang:monitor(process, BridgePid),
             case Type of
                 up -> gen_server:cast(BridgePid, {nkpacket_bridged, NkPort});

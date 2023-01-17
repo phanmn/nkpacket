@@ -42,16 +42,7 @@
          handle_cast/2, handle_info/2]).
 
 -include("nkpacket.hrl").
-
-
--define(DEBUG(Txt, Args, State),
-    case State#state.debug of
-        true -> ?LLOG(debug, Txt, Args, State);
-        _ -> ok
-    end).
-
--define(LLOG(Type, Txt, Args, State),
-    lager:Type("NkPACKET Pool (~p) "++Txt, [State#state.id|Args])).
+-include_lib("nklib/include/nklib.hrl").
 
 -define(NUM_TRIES, 2).
 -define(INITIAL_DELAY_SECS, 5).    % Secs
@@ -243,7 +234,7 @@ init([Id, Config]) ->
     true = nklib_proc:reg({?MODULE, Id}),
     nklib_proc:put(?MODULE, Id),
     self() ! launch_resolve,
-    lager:warning("Connection pooler started for ~p: ~p", [Id, Config]),
+    ?W("Connection pooler started for ~p: ~p", [Id, Config]),
     {ok, State1}.
 
 
@@ -270,7 +261,7 @@ handle_call(get_status, _From, #state{id=SrvId, conn_spec=Spec, conn_status=Stat
     {reply, {ok, #{srv_id=>SrvId, spec=>Spec, status=>Status, conns=>Pids}}, State};
 
 handle_call(Msg, _From, State) ->
-    lager:error("Module ~p received unexpected call ~p", [?MODULE, Msg]),
+    ?E("Module ~p received unexpected call ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 
@@ -282,34 +273,34 @@ handle_cast({release_exclusive_pid, ConnPid}, State) ->
     #state{conn_pids=ConnPids, conn_user_mons=Mons} = State,
     case maps:find(ConnPid, ConnPids) of
         {ok, {ConnId, Mon}} when is_reference(Mon) ->
-            ?DEBUG("releasing connection: ~p", [ConnId], State),
+            ?D("releasing connection: ~p", [ConnId]),
             nklib_util:demonitor(Mon),
             ConnPids2 = ConnPids#{ConnPid => {ConnId, undefined}},
             Mons2 = maps:remove(Mon, Mons),
             State2 = State#state{conn_pids=ConnPids2, conn_user_mons=Mons2},
             {noreply, State2};
         _ ->
-            ?LLOG(notice, "received release for invalid connection", [], State),
+            ?N("received release for invalid connection", []),
             {noreply, State}
     end;
 
 handle_cast({retry_get_conn_pid, Tries, From, Exclusive}, State) when Tries > 0 ->
-    ?DEBUG("retrying get pid (remaining tries:~p)", [Tries], State),
+    ?D("retrying get pid (remaining tries:~p)", [Tries]),
     State2 = find_conn_pid(Tries, From, Exclusive, State),
     {noreply, State2};
 
 handle_cast({retry_get_conn_pid, _Tries, From, _Exclusive}, State) ->
-    ?DEBUG("retrying get pid: too many retries", [], State),
+    ?D("retrying get pid: too many retries", []),
     gen_server:reply(From, {error, no_connections}),
     {noreply, State};
 
 handle_cast({resolve_data, {_Specs, [], _Max}}, State) ->
-    ?LLOG(warning, "no connections spec", [], State),
+    ?W("no connections spec", []),
     {stop, no_weights, State};
 
 handle_cast({resolve_data, {Specs, Weights, Max}}, State) ->
-    ?DEBUG("new resolved spec: ~p", [Specs], State),
-    ?DEBUG("new resolved weights: ~p", [Weights], State),
+    ?D("new resolved spec: ~p", [Specs]),
+    ?D("new resolved weights: ~p", [Weights]),
     #state{resolve_interval_secs=Time} = State,
     case Time > 0 of
         true ->
@@ -331,7 +322,7 @@ handle_cast({new_connection_error, ConnId, Error, Tries, From, Exclusive}, State
     {noreply, do_connect_error(ConnId, Error, Tries, From, Exclusive, State)};
 
 handle_cast(Msg, State) ->
-    lager:error("Module ~p received unexpected cast ~p", [?MODULE, Msg]),
+    ?E("Module ~p received unexpected cast ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 
@@ -348,7 +339,7 @@ handle_info({'EXIT', _Pid, normal}, State) ->
     {noreply, State};
 
 handle_info({'EXIT', Pid, Reason}, State) ->
-    ?DEBUG("EXIT from ~p: ~p", [Pid, Reason], State),
+    ?D("EXIT from ~p: ~p", [Pid, Reason]),
     {noreply, State};
 
 handle_info({'DOWN', Mon, process, Pid, Reason}=Msg, State) ->
@@ -360,7 +351,7 @@ handle_info({'DOWN', Mon, process, Pid, Reason}=Msg, State) ->
     } = State,
     case maps:take(Pid, ConnPids) of
         {{ConnId, UserMon}, ConnPids2} ->
-            ?DEBUG("connection ~p down (~p)", [ConnId, Reason], State),
+            ?D("connection ~p down (~p)", [ConnId, Reason]),
             Status1 = maps:get(ConnId, ConnStatus),
             #conn_status{conn_pids=Pids} = Status1,
             Status2 = Status1#conn_status{conn_pids=Pids -- [Pid]},
@@ -382,21 +373,21 @@ handle_info({'DOWN', Mon, process, Pid, Reason}=Msg, State) ->
             case maps:take(Mon, Mons) of
                 {ConnPid, Mons2} ->
                     {ConnId, Mon} = maps:get(ConnPid, ConnPids),
-                    ?LLOG(notice, "exclusive user ~p down, stopping ~p",
-                          [Pid, ConnId], State),
+                    ?N("exclusive user ~p down, stopping ~p",
+                          [Pid, ConnId]),
                     %% Connection may be in inconsistent state, stop it
                     StopFun(ConnPid),
                     State2 = State#state{conn_user_mons=Mons2},
                     {noreply, State2};
                 error ->
-                    lager:warning("Module ~p received unexpected info: ~p (~p)",
+                    ?W("Module ~p received unexpected info: ~p (~p)",
                                   [?MODULE, Msg, State]),
                     {noreply, State}
             end
     end;
 
 handle_info(Info, State) ->
-    lager:warning("Module ~p received unexpected info: ~p (~p)", [?MODULE, Info, State]),
+    ?W("Module ~p received unexpected info: ~p (~p)", [?MODULE, Info, State]),
     {noreply, State}.
 
 
@@ -412,9 +403,9 @@ code_change(_OldVsn, State, _Extra) ->
 -spec terminate(term(), #state{}) ->
     ok.
 
-terminate(_Reason, #state{conn_pids=ConnPids, conn_stop_fun=StopFun}=State) ->
+terminate(_Reason, #state{conn_pids=ConnPids, conn_stop_fun=StopFun}) ->
     Pids = maps:keys(ConnPids),
-    ?DEBUG("stopping pids: ~p", [Pids], State),
+    ?D("stopping pids: ~p", [Pids]),
     lists:foreach(fun(Pid) -> StopFun(Pid) end, Pids),
     ok.
 
@@ -441,12 +432,12 @@ do_resolve([], _Config, _Pid, _Fun, Specs, Weights) ->
 do_resolve([Target|Rest], Config, Pid, Fun, Specs, Weights) ->
     Pool = maps:get(pool, Target, 1),
     Max = maps:get(max_exclusive, Target, Pool),
-    lager:error("NKLOG MAX EXCLUSIVE IS ~p", [Max]),
+    ?E("NKLOG MAX EXCLUSIVE IS ~p", [Max]),
     {ConnList, Meta} = case Fun(Target, Config, Pid) of
         {ok, ConnList0, Meta0} ->
             {ConnList0, Meta0};
         {error, Error} ->
-            lager:error("NkPACKET Pool error resolving ~p: ~p", [Target, Error]),
+            ?E("NkPACKET Pool error resolving ~p: ~p", [Target, Error]),
             {[], #{}}
     end,
     Specs2 = lists:foldl(
@@ -502,7 +493,7 @@ find_conn_pid(Tries, From, Exclusive, State) ->
     ConnId = do_find_conn(Pos, Weights),
     Spec = maps:get(ConnId, ConnSpec),
     #conn_spec{id=ConnId, pool=Pool, max_exclusive=MaxExclusive, meta=Meta} = Spec,
-    ?DEBUG("selected weight ~p: ~p", [Pos, ConnId], State),
+    ?D("selected weight ~p: ~p", [Pos, ConnId]),
     case maps:find(ConnId, ConnStatus) of
         {ok, #conn_status{status=active, conn_pids=Pids}} ->
             ActivePids = length(Pids),
@@ -511,7 +502,7 @@ find_conn_pid(Tries, From, Exclusive, State) ->
                     % Slots still available
                     connect(Spec, Tries, From, Exclusive, State);
                 false when Exclusive==false ->
-                    ?DEBUG("selecting existing pid ~p: ~p", [Pos, ConnId], State),
+                    ?D("selecting existing pid ~p: ~p", [Pos, ConnId]),
                     Pid = do_get_random_pid(Pids),
                     gen_server:reply(From, {ok, Pid, Meta#{conn_id=>ConnId}}),
                     State;
@@ -519,16 +510,16 @@ find_conn_pid(Tries, From, Exclusive, State) ->
                     % We reached all possible connections
                     case find_conn_pid_exclusive(Pids, Exclusive, State) of
                         {ok, Pid, ConnId, State2} ->
-                            ?DEBUG("selecting and locking existing pid: ~p", [ConnId], State2),
+                            ?D("selecting and locking existing pid: ~p", [ConnId]),
                             gen_server:reply(From, {ok, Pid, Meta#{conn_id=>ConnId}}),
                             State2;
                         {error, no_free_connections} ->
-                            lager:error("NKLOG NO FREE CONNECTIONs1: ~p ~p, ~p", [SrvId, ActivePids, MaxExclusive]),
+                            ?E("NKLOG NO FREE CONNECTIONs1: ~p ~p, ~p", [SrvId, ActivePids, MaxExclusive]),
                             case ActivePids < MaxExclusive of
                                 true ->
                                     connect(Spec, Tries, From, Exclusive, State);
                                 false ->
-                                    ?DEBUG("max connections reached", [], State),
+                                    ?D("max connections reached", []),
                                     gen_server:reply(From, {error, max_connections_reached}),
                                     State
                             end
@@ -575,16 +566,16 @@ connect(#conn_spec{id=ConnId, nkconn=Conn}, Tries, From, Exclusive, State) ->
     Status = maps:get(ConnId, ConnStatus, #conn_status{}),
     case Status of
         #conn_status{status=active} ->
-            ?DEBUG("connecting to active: ~p (tries:~p)", [ConnId, Tries], State),
+            ?D("connecting to active: ~p (tries:~p)", [ConnId, Tries]),
             spawn_connect(ConnId, Conn, Tries, From, Exclusive, State);
         #conn_status{status=inactive, next_try=Next} ->
             case Next - nklib_util:timestamp() of
                 Time when Time < 0 ->
-                    ?DEBUG("reconnecting to inactive: ~p", [ConnId], State),
+                    ?D("reconnecting to inactive: ~p", [ConnId]),
                     spawn_connect(ConnId, Conn, Tries, From, Exclusive, State);
                 Time ->
-                    ?DEBUG("not yet time to recconnect to: ~p (~p secs remaining)",
-                           [ConnId, Time], State),
+                    ?D("not yet time to recconnect to: ~p (~p secs remaining)",
+                           [ConnId, Time]),
                     retry(Tries, From, Exclusive)
             end
     end,
@@ -604,7 +595,7 @@ spawn_connect(ConnId, Conn, Tries, From, Exclusive, #state{conn_start_fun=Fun}) 
                 {ok, Pid} ->
                     {new_connection_ok, ConnId, Pid, Tries, From, Exclusive};
                 {error, Error} ->
-                    lager:error("NKLOG SPAWN NEW CONNECTION ERROR"),
+                    ?E("NKLOG SPAWN NEW CONNECTION ERROR"),
                     {new_connection_error, ConnId, Error, Tries, From, Exclusive}
             end,
             gen_server:cast(Self, Msg)
@@ -630,8 +621,8 @@ do_connect_ok(ConnId, Pid, Tries, From, Exclusive, State) ->
                     % We still had some slot available
                     % Most backends will react to our exit and stop
                     link(Pid),
-                    ?DEBUG("connected to ~p (~p) (~p/~p pids started)",
-                        [ConnId, Pid, length(Pids)+1, Pool], State),
+                    ?D("connected to ~p (~p) (~p/~p pids started)",
+                        [ConnId, Pid, length(Pids)+1, Pool]),
                     gen_server:reply(From, {ok, Pid, Meta#{conn_id=>ConnId}}),
                     monitor(process, Pid),
                     Status2 = Status1#conn_status{
@@ -659,12 +650,12 @@ do_connect_ok(ConnId, Pid, Tries, From, Exclusive, State) ->
                     };
                 false when Exclusive==false ->
                     % We started too much
-                    ?DEBUG("selecting existing pid: ~p", [ConnId], State),
+                    ?D("selecting existing pid: ~p", [ConnId]),
                     gen_server:reply(From, {ok, do_get_random_pid(Pids), Meta#{conn_id=>ConnId}}),
                     StopFun(Pid),
                     State;
                 false ->
-                    ?DEBUG("max connections reached", [], State),
+                    ?D("max connections reached", []),
                     gen_server:reply(From, {error, max_connections_reached}),
                     StopFun(Pid),
                     State
@@ -683,7 +674,7 @@ connect_is_not_max(_SrvId, Spec, Status, false) ->
 connect_is_not_max(SrvId, Spec, Status, {true, _}) ->
     #conn_spec{pool=Pool, max_exclusive=Max} = Spec,
     #conn_status{conn_pids=Pids} = Status,
-    lager:error("NKLOG ~p MAX ~p/~p ~p ~p", [SrvId, length(Pids), Pool+Max, Pool, Max]),
+    ?E("NKLOG ~p MAX ~p/~p ~p ~p", [SrvId, length(Pids), Pool+Max, Pool, Max]),
     length(Pids) < (Pool+Max).
 
 
@@ -703,8 +694,8 @@ do_connect_error(ConnId, Error, Tries, From, Exclusive, State) ->
         delay = Delay2,
         next_try = nklib_util:timestamp() + Delay2
     },
-    ?LLOG(notice, "error connecting to ~p: ~p (~p errors, next try in ~p)",
-          [ConnId, Error, Errors+1, Delay2], State),
+    ?N("error connecting to ~p: ~p (~p errors, next try in ~p)",
+          [ConnId, Error, Errors+1, Delay2]),
     retry(Tries, From, Exclusive),
     State#state{conn_status = ConnStatus#{ConnId => Status2}}.
 

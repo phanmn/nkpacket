@@ -31,19 +31,7 @@
 -export([start_link/3]).
 
 -include("nkpacket.hrl").
-
-
-%% To get debug info, start with debug=>true
-
--define(DEBUG(Txt, Args),
-    case get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args);
-        _ -> ok
-    end).
-
--define(LLOG(Type, Txt, Args), lager:Type("NkPACKET TCP "++Txt, Args)).
-
-
+-include_lib("nklib/include/nklib.hrl").
 
 
 %% ===================================================================
@@ -142,7 +130,7 @@ init([NkPort]) ->
             RanchId = {Transp, ListenIp, LocalPort},
             RanchPort = NkPort1#nkport{opts=maps:with(?CONN_LISTEN_OPTS, Meta)},
             Listeners = maps:get(tcp_listeners, Meta, 100),
-            ?DEBUG("active listeners: ~p", [Listeners]),
+            ?D("active listeners: ~p", [Listeners]),
             {ok, RanchPid} = ranch_listener_sup:start_link(
                 RanchId,
                 RanchMod,
@@ -182,7 +170,7 @@ init([NkPort]) ->
             },
             {ok, State};
         {error, Error} ->
-            ?LLOG(error, "could not start ~p transport on ~p:~p (~p)", 
+            ?E("could not start ~p transport on ~p:~p (~p)",
                    [Transp, ListenIp, ListenPort, Error]),
             {stop, Error}
     end.
@@ -257,7 +245,7 @@ terminate(Reason, State) ->
         ranch_pid = RanchPid,
         nkport = #nkport{transp=Transp, socket=Socket} = NkPort
     } = State,
-    ?DEBUG("listener stop: ~p", [Reason]),
+    ?D("listener stop: ~p", [Reason]),
     catch call_protocol(listen_stop, [Reason, NkPort], State),
     exit(RanchPid, shutdown),
     timer:sleep(100),   %% Give time to ranch to close acceptors
@@ -321,7 +309,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=tcp}=
         Timeout0 ->
             Timeout0
     end,
-    ?DEBUG("connect to: tcp:~p:~p (~p)", [ Ip, Port, SocketOpts]),
+    ?D("connect to: tcp:~p:~p (~p)", [ Ip, Port, SocketOpts]),
     case gen_tcp:connect(Ip, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, inet, Socket};
@@ -343,7 +331,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=tls}=
         _ ->
             Ip
     end,
-    ?DEBUG("connect to: tls:~p:~p (~p)", [Host, Port, SocketOpts]),
+    ?D("connect to: tls:~p:~p (~p)", [Host, Port, SocketOpts]),
     case ssl:connect(Host, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, ssl, Socket};

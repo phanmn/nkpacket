@@ -58,7 +58,7 @@ basic() ->
 	{ok, {_, ws, {0,0,0,0}, LPort1}} = nkpacket:get_local(Ws1),
 	case LPort1 of
 		1238 -> ok;
-		_ -> lager:warning("Could not open port 1238")
+		_ -> ?W("Could not open port 1238")
 	end,
 	receive {Ref1, listen_init} -> ok after 1000 -> error(?LINE) end,
 	[
@@ -165,7 +165,7 @@ wss() ->
 	{ok, {_, wss, {0,0,0,0}, LPort1}} = nkpacket:get_local(Ws1),
 	case LPort1 of
 		1239 -> ok;
-		_ -> lager:warning("Could not open port 1239")
+		_ -> ?W("Could not open port 1239")
 	end,
 	[
 		#nkport{

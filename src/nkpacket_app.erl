@@ -27,6 +27,7 @@
 -export([get/1, get/2, get_srv/2, put/2]).
 
 -include("nkpacket.hrl").
+-include_lib("nklib/include/nklib.hrl").
 
 -define(APP, nkpacket).
 -compile({no_auto_import, [get/1, put/2]}).
@@ -58,16 +59,16 @@ start(_Type, _Args) ->
             nkpacket_config:set_config(),
             {ok, Pid} = nkpacket_sup:start_link(),
             {ok, Vsn} = application:get_key(nkpacket, vsn),
-            lager:info("NkPACKET v~s has started.", [Vsn]),
+            ?I("NkPACKET v~s has started.", [Vsn]),
             MainIp = nklib_util:to_host(nkpacket_app:get(main_ip)),
             MainIp6 = nklib_util:to_host(nkpacket_app:get(main_ip6)),
             ExtIp = nklib_util:to_host(nkpacket_app:get(ext_ip)),
-            lager:info("Main IP is ~s (~s). External IP is ~s", 
+            ?I("Main IP is ~s (~s). External IP is ~s",
                        [MainIp, MainIp6, ExtIp]),
             code:ensure_loaded(nkpacket_httpc_protocol),
             {ok, Pid};
         {error, Error} ->
-            lager:error("Config error: ~p", [Error]),
+            ?E("Config error: ~p", [Error]),
             error(config_error)
     end.
 

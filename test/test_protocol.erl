@@ -32,6 +32,7 @@
 -export([http_init/4]).
 
 -include("nkpacket.hrl").
+-include_lib("nklib/include/nklib.hrl").
 
 %% ===================================================================
 %% Types
@@ -73,7 +74,7 @@ default_port(_) -> invalid.
 	#listen_state{}.
 
 listen_init(NkPort) ->
-	lager:info("Protocol LISTEN init: ~p (~p)", [NkPort, self()]),
+	?I("Protocol LISTEN init: ~p (~p)", [NkPort, self()]),
 	State = case nkpacket:get_user_state(NkPort) of
 		{ok, {Pid, Ref}} ->
 			#listen_state{pid=Pid, ref=Ref};
@@ -85,12 +86,12 @@ listen_init(NkPort) ->
 
 
 listen_handle_call(Msg, _From, _NkPort, State) ->
-	lager:warning("Unexpected call: ~p", [Msg]),
+	?W("Unexpected call: ~p", [Msg]),
 	{ok, State}.
 
 
 listen_handle_cast(Msg, _NkPort, State) ->
-	lager:warning("Unexpected cast: ~p", [Msg]),
+	?W("Unexpected cast: ~p", [Msg]),
 	{ok, State}.
 
 
@@ -98,16 +99,16 @@ listen_handle_info({'EXIT', _, forced_stop}, _NkPort, State) ->
 	{stop, forced_stop, State};
 
 listen_handle_info(Msg, _NkPort, State) ->
-	lager:warning("Unexpected listen info: ~p", [Msg]),
+	?W("Unexpected listen info: ~p", [Msg]),
 	{ok, State}.
 
 listen_parse(Ip, Port, Data, _NkPort, State) ->
-	lager:info("LISTEN Parsing fromm ~p:~p: ~p", [Ip, Port, Data]),
+	?I("LISTEN Parsing fromm ~p:~p: ~p", [Ip, Port, Data]),
 	maybe_reply({listen_parse, Data}, State),
 	{ok, State}.
 
 listen_stop(Reason, _NkPort, State) ->
-	lager:info("LISTEN  stop: ~p, ~p", [Reason, State]),
+	?I("LISTEN  stop: ~p, ~p", [Reason, State]),
 	maybe_reply(listen_stop, State),
 	ok.
 
@@ -126,7 +127,7 @@ listen_stop(Reason, _NkPort, State) ->
 	{ok, #conn_state{}}.
 
 conn_init(NkPort) ->
-	lager:info("Protocol CONN init: ~p (~p)", [NkPort, self()]),
+	?I("Protocol CONN init: ~p (~p)", [NkPort, self()]),
 	State = case nkpacket:get_user_state(NkPort) of
 		{ok, {Pid, Ref}} -> #conn_state{pid=Pid, ref=Ref};
 		_ -> #conn_state{}
@@ -136,17 +137,17 @@ conn_init(NkPort) ->
 
 
 conn_parse({text, Data}, _NkPort, State) ->
-	lager:debug("Parsing WS TEXT: ~p", [Data]),
+	?D("Parsing WS TEXT: ~p", [Data]),
 	maybe_reply({parse, {text, Data}}, State),
 	{ok, State};
 
 conn_parse({binary, <<>>}, _NkPort, State) ->
-	lager:error("EMPTY"),
+	?E("EMPTY"),
 	{ok, State};
 
 conn_parse({binary, Data}, _NkPort, State) ->
 	Msg = erlang:binary_to_term(Data),
-	lager:debug("Parsing WS BIN: ~p", [Msg]),
+	?D("Parsing WS BIN: ~p", [Msg]),
 	maybe_reply({parse, {binary, Msg}}, State),
 	{ok, State};
 
@@ -157,49 +158,49 @@ conn_parse(pong, _NkPort, State) ->
 	{ok, State};
 
 conn_parse({pong, Payload}, _NkPort, State) ->
-	lager:debug("Parsing WS PONG: ~p", [Payload]),
+	?D("Parsing WS PONG: ~p", [Payload]),
 	maybe_reply({pong, Payload}, State),
 	{ok, State};
 
 conn_parse(Data, #nkport{class=Class}, State) ->
 	Msg = erlang:binary_to_term(Data),
-	lager:debug("Parsing: ~p (~p)", [Msg, Class]),
+	?D("Parsing: ~p (~p)", [Msg, Class]),
 	maybe_reply({parse, Msg}, State),
 	{ok, State}.
 
 conn_encode({nkraw, Msg}, NkPort, State) ->
-	lager:debug("UnParsing RAW: ~p, ~p", [Msg, NkPort]),
+	?D("UnParsing RAW: ~p, ~p", [Msg, NkPort]),
 	maybe_reply({encode, Msg}, State),
 	{ok, Msg, State};
 
 conn_encode(Msg, NkPort, State) ->
-	lager:debug("UnParsing: ~p, ~p", [Msg, NkPort]),
+	?D("UnParsing: ~p, ~p", [Msg, NkPort]),
 	maybe_reply({encode, Msg}, State),
 	{ok, erlang:term_to_binary(Msg), State}.
 
 conn_handle_call(Msg, _From, _NkPort, State) ->
-	lager:warning("Unexpected call: ~p", [Msg]),
+	?W("Unexpected call: ~p", [Msg]),
 	{ok, State}.
 
 
 conn_handle_cast(Msg, _NkPort, State) ->
-	lager:warning("Unexpected cast: ~p", [Msg]),
+	?W("Unexpected cast: ~p", [Msg]),
 	{ok, State}.
 
 
 conn_handle_info(Msg, _NkPort, State) ->
-	lager:warning("Unexpected conn info: ~p", [Msg]),
+	?W("Unexpected conn info: ~p", [Msg]),
 	{ok, State}.
 
 conn_stop(Reason, _NkPort, State) ->
-	lager:info("CONN stop: ~p", [Reason]),
+	?I("CONN stop: ~p", [Reason]),
 	maybe_reply(conn_stop, State),
 	ok.
 
 
 
 % encode(Msg, NkPort) ->
-% 	lager:info("Quick UnParsing: ~p, ~p", [Msg, NkPort]),
+% 	?I("Quick UnParsing: ~p, ~p", [Msg, NkPort]),
 % 	{ok, erlang:term_to_binary(Msg)}.
 
 

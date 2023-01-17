@@ -34,18 +34,6 @@
 -include_lib("nklib/include/nklib.hrl").
 
 
--define(DEBUG(Txt, Args, NkPort),
-    case erlang:get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args, NkPort);
-        _ -> ok
-    end).
-
-
--define(LLOG(Type, Txt, Args, NkPort),
-    lager:Type("NkPACKET Conn HTTP ~p (~p) "++Txt,
-        [NkPort#nkport.protocol, NkPort#nkport.transp|Args])).
-
-
 %% ===================================================================
 %% Types
 %% ===================================================================
@@ -93,7 +81,7 @@ default_port(https) -> 443.
 conn_init(NkPort) ->
 	#nkport{remote_ip=Ip, remote_port=Port, opts=Opts} = NkPort,
     {ok, UserState1} = nkpacket:get_user_state(NkPort),
-	?DEBUG("protocol init", [], NkPort),
+	?D("protocol init", []),
     UserState2 = case UserState1 of
         undefined ->
             #{};
@@ -153,7 +141,7 @@ conn_timeout(_NkPort, #state{refresh_req=undefined}=State) ->
     {stop, normal, State};
 
 conn_timeout(_NkPort, #state{refresh_req=Refresh}=State) ->
-    ?DEBUG("sending refresh", [], _NkPort),
+    ?D("sending refresh", []),
     nkpacket_connection:send_async(self(), {nkpacket_http, Refresh}),
     {ok, State}.
 
@@ -239,7 +227,7 @@ handle(Data, NkPort, #state{next=head, buff=Buff}=State) ->
 	end;
 
 handle(Data, NkPort, #state{next={body, Length}}=State) ->
-    ?DEBUG("parsing body: ~s", [Data], NkPort),
+    ?D("parsing body: ~s", [Data]),
 	#state{buff=Buff, streams=[{Ref, Pid}|_]} = State,
 	Data1 = << Buff/binary, Data/binary>>,
 	case byte_size(Data1) of
@@ -255,7 +243,7 @@ handle(Data, NkPort, #state{next={body, Length}}=State) ->
 	end;
 
 handle(Data, NkPort, #state{next=chunked}=State) ->
-    ?DEBUG("parsing chunked: ~s", [Data], NkPort),
+    ?D("parsing chunked: ~s", [Data]),
 	#state{buff=Buff, streams=[{Ref, Pid}|_]} = State,
 	Data1 = << Buff/binary, Data/binary>>,
 	case parse_chunked(Data1) of
@@ -270,7 +258,7 @@ handle(Data, NkPort, #state{next=chunked}=State) ->
 	end;
 
 handle(Data, _NkPort, #state{next=stream, streams=[{Ref, Pid}|_]}=State) ->
-    ?DEBUG("parsing stream: ~s", [Data], _NkPort),
+    ?D("parsing stream: ~s", [Data]),
 	notify(Ref, Pid, {chunk, Data}),
 	{ok, State}.
 
@@ -281,9 +269,9 @@ handle(Data, _NkPort, #state{next=stream, streams=[{Ref, Pid}|_]}=State) ->
 
 handle_head(Data, NkPort, #state{streams=[{Ref, Pid}|_]}=State) ->
 	{_Version, Status, _Msg, Rest} = cow_http:parse_status_line(Data),
-    ?DEBUG("received head: ~s ~p ~s", [_Version, Status, _Msg], NkPort),
+    ?D("received head: ~s ~p ~s", [_Version, Status, _Msg]),
 	{Hds, Rest2} = cow_http:parse_headers(Rest),
-    ?DEBUG("received headers: ~p", [Hds], NkPort),
+    ?D("received headers: ~p", [Hds]),
 	notify(Ref, Pid, {head, Status, Hds}),
 	Remaining = case lists:keyfind(<<"content-length">>, 1, Hds) of
 		{_, <<"0">>} ->
@@ -303,7 +291,7 @@ handle_head(Data, NkPort, #state{streams=[{Ref, Pid}|_]}=State) ->
 					end
 			end
 	end,
-    ?DEBUG("remaining: ~p", [Remaining], NkPort),
+    ?D("remaining: ~p", [Remaining]),
 	State1 = case Remaining of
 		0 ->
 			notify(Ref, Pid, {body, <<>>}),

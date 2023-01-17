@@ -39,17 +39,6 @@
 -include("nkpacket.hrl").
 
 
-%% To get debug info, start with debug=>true
-
--define(DEBUG(Txt, Args),
-    case get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args);
-        _ -> ok
-    end).
-
--define(LLOG(Type, Txt, Args), lager:Type("NkPACKET WS "++Txt, Args)).
-
-
 %% ===================================================================
 %% Private
 %% ===================================================================
@@ -162,8 +151,8 @@ init([NkPort]) ->
             ws_proto = maps:get(ws_proto, Meta, any),
             meta = Meta2
         },
-        ?DEBUG("starting nkpacket_cowboy (~p) (~p)",
-               [lager:pr(NkPort1, ?MODULE), lager:pr(Filter, ?MODULE)]),
+        ?D("starting nkpacket_cowboy (~p) (~p)",
+               [NkPort1, Filter]),
         SharedPid = case nkpacket_cowboy:start(NkPort1, Filter) of
             {ok, SharedPid0} -> SharedPid0;
             {error, Error} -> throw(Error)
@@ -195,7 +184,7 @@ init([NkPort]) ->
             _ -> 
                 undefined
         end,
-        ?DEBUG("created ~p listener for ~p:~p:~p (~p, ~p, ~p) (~p)", 
+        ?D("created ~p listener for ~p:~p:~p (~p, ~p, ~p) (~p)",
                [Protocol, Transp, LocalIp, LocalPort, 
                 Host, Path, WsProto, self()]),
         State = #state{
@@ -208,7 +197,7 @@ init([NkPort]) ->
         {ok, State}
     catch
         throw:TError -> 
-            ?LLOG(error, "could not start ~p transport on ~p:~p (~p)", 
+            ?E("could not start ~p transport on ~p:~p (~p)",
                    [Transp, ListenIp, ListenPort, TError]),
         {stop, TError}
     end.
@@ -244,10 +233,10 @@ handle_call({nkpacket_start, Ip, Port, FilterMeta, Pid}, _From, State) ->
 %%
 %%    case nkpacket_connection:start(NkPort1) of
 %%        {ok, #nkport{pid=ConnPid}=NkPort2} ->
-%%            ?DEBUG("listener accepted connection: ~p", [NkPort2]),
+%%            ?D("listener accepted connection: ~p", [NkPort2]),
 %%            {reply, {ok, ConnPid}, State};
 %%        {error, Error} ->
-%%            ?DEBUG("listener did not accepted connection: ~p", [Error]),
+%%            ?D("listener did not accepted connection: ~p", [Error]),
 %%            {reply, next, State}
 %%    end;
 
@@ -285,7 +274,7 @@ handle_info({'DOWN', MRef, process, _Pid, _Reason}, #state{monitor_ref=MRef}=Sta
     {stop, normal, State};
 
 handle_info({'DOWN', _MRef, process, Pid, Reason}, #state{shared=Pid}=State) ->
-    ?DEBUG("received SHARED stop", []),
+    ?D("received SHARED stop", []),
     {stop, Reason, State};
 
 handle_info(Msg, #state{nkport=NkPort}=State) ->
@@ -358,7 +347,7 @@ websocket_init(NkPort) ->
         {ok, ConnPid} ->
             {ok, ConnPid};
         {error, Error} ->
-            ?LLOG(notice, "WS could not start session: ~p", [Error]),
+            ?N("WS could not start session: ~p", [Error]),
             {stop, NkPort}
     end.
 
@@ -397,7 +386,7 @@ websocket_handle({pong, Body}, ConnPid) ->
     {ok, ConnPid};
 
 websocket_handle(Other, ConnPid) ->
-    ?LLOG(warning, "WS Handler received unexpected ~p", [Other]),
+    ?W("WS Handler received unexpected ~p", [Other]),
     {stop, ConnPid}.
 
 
@@ -433,13 +422,13 @@ websocket_info(nkpacket_stop, ConnPid) ->
     {stop, ConnPid};
 
 websocket_info(Info, ConnPid) ->
-    lager:error("Module ~p received unexpected info ~p", [?MODULE, Info]),
+    ?E("Module ~p received unexpected info ~p", [?MODULE, Info]),
     {ok, ConnPid}.
 
 
 %%%% @private
 terminate(Reason, _Req, ConnPid) ->
-    ?DEBUG("WS terminate: ~p (~p)", [Reason, ConnPid]),
+    ?D("WS terminate: ~p (~p)", [Reason, ConnPid]),
     nkpacket_connection:stop(ConnPid, normal),
     ok.
 
@@ -461,7 +450,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=ws}) 
         Timeout0 ->
             Timeout0
     end,
-    ?DEBUG("connect to: ws:~p:~p (~p)", [Ip, Port, SocketOpts]),
+    ?D("connect to: ws:~p:~p (~p)", [Ip, Port, SocketOpts]),
     case gen_tcp:connect(Ip, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, inet, Socket};
@@ -483,7 +472,7 @@ connect_outbound(#nkport{remote_ip=Ip, remote_port=Port, opts=Opts, transp=wss})
         _ ->
             Ip
     end,
-    ?DEBUG("connect to: wss:~p:~p (~p)", [Host, Port, SocketOpts]),
+    ?D("connect to: wss:~p:~p (~p)", [Host, Port, SocketOpts]),
     case ssl:connect(Host, Port, SocketOpts, ConnTimeout) of
         {ok, Socket} ->
             {ok, ssl, Socket};

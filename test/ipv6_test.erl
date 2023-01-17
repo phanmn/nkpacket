@@ -56,7 +56,7 @@ basic() ->
 	{ok, {_, tcp, _, LPort2}} = nkpacket:get_local(Tcp2),
 	case LPort2 of
 		1235 -> ok;
-		_ -> lager:warning("Could not open 1235")
+		_ -> ?W("Could not open 1235")
 	end,
 
 	timer:sleep(100),

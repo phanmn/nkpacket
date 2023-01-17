@@ -203,7 +203,7 @@ naptr(Scheme, Domain, #{protocol:=Protocol}=Opts) when Protocol/=undefined ->
                 undefined ->
                     Naptr = lists:sort(inet_res:lookup(Domain1, in, naptr)),
                     save_cache({naptr, Domain1}, Naptr),
-                    lager:debug("Naptr: ~p", [Naptr]),
+                    ?D("Naptr: ~p", [Naptr]),
                     naptr(Scheme, Naptr, Protocol, Opts, []);
                 Naptr ->
                     naptr(Scheme, Naptr, Protocol, Opts, [])
@@ -267,7 +267,7 @@ srvs(Domain, Opts) ->
         [] -> 
             [];
         _ -> 
-            lager:debug("Srvs: ~p", [List]),
+            ?D("Srvs: ~p", [List]),
             lists:flatten([
                 [{Addr, Port} || Addr <- ips(Host, Opts)] || {Host, Port} <- List
             ])
@@ -294,7 +294,7 @@ ips(Host, Opts) ->
         undefined ->
             case inet:getaddrs(Host1, inet) of
                 {ok, [Ip, Ip]} ->
-                    lager:debug("Duplicted IP from inet:getaddrs/2"),
+                    ?D("Duplicted IP from inet:getaddrs/2"),
                     Ips = [Ip];
                 {ok, Ips} -> 
                     ok;
@@ -362,7 +362,7 @@ init([]) ->
     {stop, term(), #state{}} | {stop, term(), term(), #state{}}.
 
 handle_call(Msg, _From, State) -> 
-    lager:error("Module ~p received unexpected call ~p", [?MODULE, Msg]),
+    ?E("Module ~p received unexpected call ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 
@@ -371,7 +371,7 @@ handle_call(Msg, _From, State) ->
     {noreply, #state{}} | {stop, term(), #state{}}.
 
 handle_cast(Msg, State) -> 
-    lager:error("Module ~p received unexpected cast ~p", [?MODULE, Msg]),
+    ?E("Module ~p received unexpected cast ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 
@@ -388,7 +388,7 @@ handle_info({timeout, _, check_ttl}, State) ->
     {noreply, State};
 
 handle_info(Info, State) -> 
-    lager:warning("Module ~p received unexpected info: ~p", [?MODULE, Info]),
+    ?W("Module ~p received unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 
@@ -493,7 +493,6 @@ get_port(0, Transp, #{protocol:=Protocol}) when Protocol/=undefined ->
         true ->
             case Protocol:default_port(Transp) of
                 Port when is_integer(Port) ->
-                    % lager:warning("P: ~p, ~p: ~p", [Protocol, Transp, Port]),
                     Port;
                 _ ->
                     throw({invalid_transport, Transp})

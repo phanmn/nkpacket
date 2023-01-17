@@ -41,15 +41,6 @@
 
 %% To get debug info, the current process must have 'nkpacket_debug=true'
 
--define(DEBUG(Txt, Args),
-    case erlang:get(nkpacket_debug) of
-        true -> ?LLOG(debug, Txt, Args);
-        _ -> ok
-    end).
-
--define(LLOG(Type, Txt, Args), lager:Type("NkPACKET "++Txt, Args)).
-
-
 %% ===================================================================
 %% Public
 %% ===================================================================
@@ -99,7 +90,6 @@ get_connected(#nkconn{protocol=Protocol, transp=Transp, ip=Ip, port=Port, opts=#
         Pid ||
         {_Meta, Pid} <- nklib_proc:values({nkpacket_connection, Class, {Protocol, Transp, Ip, Port}})
     ],
-%%    lager:error("NKLOG FOUND CONNS ~p: ~p", [{nkpacket_connection, Class, {Protocol, Transp, Ip, Port}}, List]),
     List;
 
 get_connected(#nkconn{}) ->
@@ -115,7 +105,7 @@ get_connected(#nkconn{}) ->
     {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 
 send([], _) ->
-    ?LLOG(notice, "send error: no_transports", []),
+    ?N("send error: no_transports", []),
     {error, no_transports};
 
 send([#nkconn{protocol=Protocol, transp=Transp, port=0}=Conn|MoreConns], Msg) ->
@@ -131,22 +121,22 @@ send([#nkconn{opts=#{force_new:=true}}=Conn|MoreConns], Msg) ->
 
 send([#nkconn{}=Conn|MoreConns], Msg) ->
     Pids = get_connected(Conn),
-    ?DEBUG("sending to nkconn ~p: (connected pids: ~p)", [lager:pr(Conn, ?MODULE), Pids]),
+    ?D("sending to nkconn ~p: (connected pids: ~p)", [Conn, Pids]),
     %% Try connected pids, if nothing works try to connect to this conn before jumping
     %% to next one
     do_send(Pids, Conn, Msg, [{connect, Conn}|MoreConns]);
 
 send([{current, #nkconn{transp=udp}=Conn}|MoreConns], Msg) ->
-    ?DEBUG("sending to {current, ~p} (udp)", [lager:pr(Conn, ?MODULE)]),
+    ?D("sending to {current, ~p} (udp)", [Conn]),
     send([Conn|MoreConns], Msg);
 
 send([{current, #nkconn{}=Conn}|MoreConns], Msg) ->
     Pids = get_connected(Conn),
-    ?DEBUG("sending to {current, ~p} (connected pids: ~p)", [lager:pr(Conn, ?MODULE), Pids]),
+    ?D("sending to {current, ~p} (connected pids: ~p)", [Conn, Pids]),
     do_send(Pids, Conn, Msg, MoreConns);
 
 send([{connect, #nkconn{}=Conn}|MoreConns], Msg) ->
-    ?DEBUG("sending to {connect, ~p}", [lager:pr(Conn, ?MODULE)]),
+    ?D("sending to {connect, ~p}", [Conn]),
     case connect([Conn]) of
         {ok, #nkport{}=NkPort} ->
             do_send([NkPort], Conn, Msg, MoreConns);
@@ -156,21 +146,21 @@ send([{connect, #nkconn{}=Conn}|MoreConns], Msg) ->
 
 % Used when we don't want to reuse the same exact connection (stateless proxies)
 send([#nkport{socket=undefined, class=Class, opts=Opts}=NkPort|MoreConns], Msg) ->
-    ?DEBUG("sending to nkport (socket undefined) ~p", [lager:pr(NkPort, ?MODULE)]),
+    ?D("sending to nkport (socket undefined) ~p", [NkPort]),
     {ok, {Protocol, Transp, Ip, Port}} = nkpacket:get_remote(NkPort),
     Conn = #nkconn{protocol=Protocol, transp=Transp, ip=Ip, port=Port, opts=Opts#{class=>Class}},
     send([{current, Conn}|MoreConns], Msg);
 
 send([#nkport{}=NkPort|MoreConns], Msg) ->
-    ?DEBUG("sending to nkport ~p", [lager:pr(NkPort, ?MODULE)]),
+    ?D("sending to nkport ~p", [NkPort]),
     do_send([NkPort], undefined, Msg, MoreConns);
 
 send([Pid|MoreConns], Msg) when is_pid(Pid) ->
-    ?DEBUG("sending to pid ~p", [Pid]),
+    ?D("sending to pid ~p", [Pid]),
     do_send([Pid], undefined, Msg, MoreConns);
 
 send([{error, Error}|_], _Msg) ->
-    ?DEBUG("send error reached: ~p", [Error]),
+    ?D("send error reached: ~p", [Error]),
     {error, Error}.
 
 %% @private
@@ -181,7 +171,7 @@ do_send([{error, Error}|_], _Conn, Msg, MoreConns) ->
     send(MoreConns++[{error, Error}], Msg);
 
 do_send([Pid|Rest], Conn, Msg, MoreConns) when is_pid(Pid) ->
-    ?DEBUG("sending to connected pid ~p (~p)", [Pid, lager:pr(Conn, ?MODULE)]),
+    ?D("sending to connected pid ~p (~p)", [Pid, Conn]),
     case nkpacket_connection:send(Pid, Msg) of
         ok ->
             {ok, Pid};
@@ -191,7 +181,7 @@ do_send([Pid|Rest], Conn, Msg, MoreConns) when is_pid(Pid) ->
             % For this error, skip all other pids
             case is_record(Conn, nkconn) andalso Conn#nkconn.opts of
                 #{udp_to_tcp:=true} ->
-                    ?DEBUG("retrying with tcp", []),
+                    ?D("retrying with tcp", []),
                     send([Conn#nkconn{transp=tcp}|MoreConns], Msg);
                 _ ->
                     send(MoreConns++[{error, udp_too_large}], Msg)
@@ -202,11 +192,11 @@ do_send([Pid|Rest], Conn, Msg, MoreConns) when is_pid(Pid) ->
 
 do_send([#nkport{protocol=sctp, pid=Pid}|Rest], Conn, Msg, MoreConns) ->
     % SCTP does not seem to work with direct socket access
-    ?DEBUG("sctp switching to pid", []),
+    ?D("sctp switching to pid", []),
     do_send([Pid|Rest], Conn, Msg, MoreConns);
 
 do_send([#nkport{pid=Pid}=NkPort|Rest], Conn, Msg, MoreConns) ->
-    ?DEBUG("sending to connected ~p (~p)", [lager:pr(NkPort, ?MODULE), lager:pr(Conn, ?MODULE)]),
+    ?D("sending to connected ~p (~p)", [NkPort, Conn]),
     case nkpacket_connection:send(NkPort, Msg) of
         ok ->
             {ok, Pid};
@@ -215,7 +205,7 @@ do_send([#nkport{pid=Pid}=NkPort|Rest], Conn, Msg, MoreConns) ->
         {error, udp_too_large} ->
             case is_record(Conn, nkconn) andalso Conn#nkconn.opts of
                 #{udp_to_tcp:=true} ->
-                    ?DEBUG("retrying with tcp", []),
+                    ?D("retrying with tcp", []),
                     send([Conn#nkconn{transp=tcp}|MoreConns], Msg);
                 _ ->
                     send(MoreConns++[{error, udp_too_large}], Msg)
@@ -241,7 +231,7 @@ connect([#nkconn{protocol=Protocol, transp=Transp, port=0} = Conn|Rest]) ->
     end;
 
 connect([#nkconn{} = Conn|Rest]) ->
-    ?DEBUG("connecting to ~p", [lager:pr(Conn, ?MODULE)]),
+    ?D("connecting to ~p", [Conn]),
     Fun = fun() -> do_connect(Conn) end,
     try nklib_proc:try_call(Fun, Conn, 100, ?CONN_TRIES) of
         {ok, NkPort} ->
@@ -283,7 +273,7 @@ do_connect(#nkconn{protocol=Protocol, transp=Transp, ip=Ip, port=Port, opts=Opts
 
             {error, no_listening_transport};
         _ ->
-            ?DEBUG("base nkport: ~p", [lager:pr(BasePort2, ?MODULE)]),
+            ?D("base nkport: ~p", [BasePort2]),
             % Our listening host and meta must not be used for the new connection
             BaseMeta2 = maps:without([host, path], BaseMeta),
             Opts2 = maps:merge(BaseMeta2, Opts),
@@ -298,14 +288,14 @@ do_connect(#nkconn{protocol=Protocol, transp=Transp, ip=Ip, port=Port, opts=Opts
                 user_state = maps:get(user_state, Opts2, undefined)
             },
             % If we found a listening transport, connection will monitor it
-            ?DEBUG("connecting to ~p", [lager:pr(ConnPort, ?MODULE)]),
+            ?D("connecting to ~p", [ConnPort]),
             case nkpacket_connection:connect(ConnPort) of
                 {ok, ConnNkPort} ->
                     % The real used nkport can be different (with local tcp port f.e.)
-                    ?DEBUG("connected to ~p", [lager:pr(ConnNkPort, ?MODULE)]),
+                    ?D("connected to ~p", [ConnNkPort]),
                     {ok, ConnNkPort};
                 {error, Error} ->
-                    ?LLOG(debug, "error connecting to ~p: ~p", [lager:pr(ConnPort, ?MODULE), Error]),
+                    ?D("error connecting to ~p: ~p", [ConnPort, Error]),
                     {error, Error}
             end
     end.
@@ -344,7 +334,7 @@ get_defport(Protocol, Transp) ->
                 Port when is_integer(Port), Port > 0 -> 
                     {ok, Port};
                 Other -> 
-                    ?LLOG(warning, "error calling ~p:default_port(~p): ~p",
+                    ?W("error calling ~p:default_port(~p): ~p",
                                   [Protocol, Transp, Other]),
                     error
             end;
@@ -382,7 +372,7 @@ open_port(NkPort, Opts) ->
     end,
     case Port of
         0 when is_integer(DefPort) ->
-            ?DEBUG("opening ~p:~p (default, ~p)", [Module, DefPort, Opts]),
+            ?D("opening ~p:~p (default, ~p)", [Module, DefPort, Opts]),
             case Module:Fun(DefPort, Opts) of
                 {ok, Socket} ->
                     {ok, Socket};
@@ -400,12 +390,12 @@ open_port(NkPort, Opts) ->
     {ok, port()} | {error, term()}.
 
 open_port(Ip, Port, Module, Fun, Opts, Iter) ->
-    ?DEBUG("opening ~p:~p (~p)", [Module, Port, Opts]),
+    ?D("opening ~p:~p (~p)", [Module, Port, Opts]),
     case Module:Fun(Port, Opts) of
         {ok, Socket} ->
             {ok, Socket};
         {error, eaddrinuse} when Iter > 0 ->
-            ?LLOG(info, "~p port ~p is in use, waiting (~p)", 
+            ?I("~p port ~p is in use, waiting (~p)",
                          [Module, Port, Iter]),
             timer:sleep(1000),
             open_port(Ip, Port, Module, Fun, Opts, Iter-1);
