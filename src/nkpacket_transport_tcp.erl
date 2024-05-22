@@ -28,7 +28,7 @@
 -export([get_listener/1, connect/1, start_link/1]).
 -export([init/1, terminate/2, code_change/3, handle_call/3, handle_cast/2,
          handle_info/2]).
--export([start_link/3]).
+-export([start_link/4]).
 
 -include("nkpacket.hrl").
 -include_lib("nklib/include/nklib.hrl").
@@ -262,11 +262,10 @@ terminate(Reason, State) ->
 
 %% @private Ranch's callback, called for every new inbound connection
 %% to create a new process to manage it
--spec start_link(term(), term(), term()) ->
+-spec start_link(term(), term(), atom(), term()) ->
     {ok, pid()}.
 
-start_link(Ref, TranspModule, [#nkport{opts=Meta} = NkPort]) ->
-    {ok, Socket} = ranch:handshake(Ref),
+start_link(Ref, Socket, TranspModule, [#nkport{opts=Meta} = NkPort]) ->
     {ok, {LocalIp, LocalPort}} = TranspModule:sockname(Socket),
     {ok, {RemoteIp, RemotePort}} = TranspModule:peername(Socket),
     NkPort1 = NkPort#nkport{
